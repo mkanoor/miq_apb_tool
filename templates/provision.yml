@@ -1,0 +1,41 @@
+    - debug: var=manageiq.href
+    - name: CloudForms Provisioning Task
+      uri:
+        url: "{{ manageiq.service_catalog_href }}"
+        user: "{{ cfme_user }}"
+        password: "{{ cfme_password }}"
+        force_basic_auth: yes
+        method: POST
+        validate_certs: False
+        headers:
+           Content-Type: "application/json"
+        body_format: json
+        body:
+          action: 'order'
+          resource:
+             href: "{{ manageiq.href }}"
+        return_content: yes
+      register: output
+
+    - debug: var=output
+    - name: set the request href
+      set_fact:
+        request_url: "{{ output.json.results[0].href }}"
+    - debug: var=request_url
+    - name: Wait for the provisioning request to end
+      uri:
+        url: "{{ request_url }}"
+        method: GET
+        user: "{{ cfme_user }}"
+        password: "{{ cfme_password }}"
+        force_basic_auth: yes
+        validate_certs: False
+        headers:
+          Content-Type: "application/json" 
+        status_code: 200
+      register: request_result
+      until: request_result.json.request_state == 'finished' or request_result.json.status == 'Error'
+      failed_when: request_result.json.status== 'Error'
+      retries: "{{ manageiq.max_retries }}"
+      delay: "{{ manageiq.retry_interval }}"
+    - debug: var=request_result
