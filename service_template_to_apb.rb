@@ -6,6 +6,7 @@ require 'json'
 require 'optparse'
 require 'yaml'
 require 'fileutils'
+require 'byebug'
 
 class ServiceTemplateToAPB
 
@@ -27,7 +28,7 @@ class ServiceTemplateToAPB
     @template_href = options[:template_href]
     @api_url       = build_api_url(@template_href || @url)
     @max_retries   = 100
-    @retry_interval = 120
+    @retry_interval = 30
     @enum_mappings  = {}
     @apb_dir        = "."
     @source_dir     = File.dirname(__FILE__)
@@ -53,7 +54,8 @@ class ServiceTemplateToAPB
     item = {}
     item['name'] = "#{dialog_field['name']}"
     item['title'] = dialog_field['label']
-    item['default'] = dialog_field['default_value'] if dialog_field['default_value'].empty?
+    item['default'] = convert_datatype(dialog_field['data_type'], dialog_field['default_value']) unless dialog_field['default_value'].empty?
+    # item['default'] = dialog_field['default_value'] unless dialog_field['default_value'].empty?
     item['display_group'] = display_group
     item['pattern'] = dialog_field['validator_rule'] if dialog_field['validator_rule']
     # type: enum|string|boolean|int|number|bool
@@ -121,6 +123,18 @@ class ServiceTemplateToAPB
       "string"
     end
   end
+
+  def convert_datatype(cfme_type, cfme_value)
+    case cfme_type
+    when "string"
+      cfme_value
+    when "integer"
+      cfme_value.to_i
+    else
+      cfme_value
+    end
+  end
+
   
   def apb_normalized_name(name)
     @apb_name ||= "#{name.downcase.gsub(/[()_,. ]/, '-')}-apb"
@@ -236,10 +250,10 @@ class ServiceTemplateToAPB
     parts.to_s
   end
 
-  def convert
+  def convert(action = 'provision')
     svc_template = @template_href ? template_by_href : template_by_name
-
-    dialog_id = svc_template['config_info']['dialog_id']
+    dialog_id = svc_template['config_info']['dialog_id'] || 
+      svc_template['config_info'][action]['dialog_id']
     raise "No Service Dialog found for Service Template #{@template || @template_href}" unless dialog_id
   
     query = "/service_dialogs/#{dialog_id}"
