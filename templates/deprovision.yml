@@ -1,0 +1,19 @@
+    - name: CloudForms Retirement Task
+      uri:
+        url: "{{ manageiq.api_url }}/services"
+        user: "{{ _apb_provision_creds.cfme_user }}"
+        password: "{{ _apb_provision_creds.cfme_password }}"
+        force_basic_auth: yes
+        method: POST
+        validate_certs: False
+        headers:
+           Content-Type: "application/json"
+        body_format: json
+        body:
+          action: 'retire'
+          resource:
+             href: "{{ _apb_provision_creds.cfme_service_href }}"
+        return_content: yes
+      register: output
+
+    - debug: var=output

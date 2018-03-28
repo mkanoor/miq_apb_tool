@@ -141,26 +141,26 @@ class ServiceTemplateToAPB
   end
 
 
-  def create_apb_yml(svc_template, parameters)
-    puts "Creating apb yaml file #{@apb_yml_file} for service template #{svc_template['name']}"
-    metadata = { 'displayName' => "#{svc_template['name']} (APB)" }
-    metadata['imageUrl'] = svc_template['picture']['image_href'] if svc_template['picture']
+  def create_apb_yml(parameters)
+    puts "Creating apb yaml file #{@apb_yml_file} for service template #{@svc_template['name']}"
+    metadata = { 'displayName' => "#{@svc_template['name']} (APB)" }
+    metadata['imageUrl'] = @svc_template['picture']['image_href'] if @svc_template['picture']
 
     plan_metadata = { 'displayName' => 'Default',
-                      'longDescription' => "This plan deploys an instance of #{svc_template['name']}",
+                      'longDescription' => "This plan deploys an instance of #{@svc_template['name']}",
                       'cost'            => '$0.0'
                     }
 
     default_plan = {'name'        => 'default',
-                    'description' => "Default deployment plan for #{svc_template['name']}-apb",
+                    'description' => "Default deployment plan for #{@svc_template['name']}-apb",
                     'free'        => true,
                     'metadata'    => plan_metadata,
                     'parameters'  => parameters
                     }
-    svc_template['description'] = 'No description provided' if svc_template['description'].empty?
+    @svc_template['description'] = 'No description provided' if @svc_template['description'].empty?
     apb = {'version' => 1.0,
-           'name'    => apb_normalized_name(svc_template['name']),
-       'description' => svc_template['description'] || 'No description provided',
+           'name'    => apb_normalized_name(@svc_template['name']),
+       'description' => @svc_template['description'] || 'No description provided',
        'bindable'    => false,
        'async'      => 'optional',
        'metadata'   => metadata,
@@ -170,27 +170,28 @@ class ServiceTemplateToAPB
     File.write(@apb_yml_file, apb.to_yaml)
   end
 
-  def create_vars_yml(svc_template, parameters)
+  def create_vars_yml(parameters, apb_action)
     puts "create vars directory"
-    vars_dir = File.join(@apb_dir, "roles/provision-#{@apb_name}/vars")
+    vars_dir = File.join(@apb_dir, "roles/#{apb_action}-#{@apb_name}/vars")
     Dir.mkdir(vars_dir) unless Dir.exist?(vars_dir)
     filename = File.join(vars_dir, "main.yml")
-    puts "Creating vars yaml file #{filename} for service template #{svc_template['name']}"
-     sc_href = @api_url+"/service_catalogs/" +  svc_template['service_template_catalog_id'] + "/service_templates"
+    puts "Creating vars yaml file #{filename} for service template #{@svc_template['name']}"
 
-
-    manageiq_vars = {'api_url' => @api_url, 
-                     'service_catalog_href'  => sc_href,
-                     'href'                  => svc_template['href'],
+    manageiq_vars = {'api_url'               => @api_url, 
                      'max_retries'           => @max_retries,
-                     'retry_interval'        => @retry_interval,
-                     'enum_map'              => @enum_mappings}
+                     'retry_interval'        => @retry_interval}
+    if apb_action == 'provision'
+      sc_href = @api_url+"/service_catalogs/" +  @svc_template['service_template_catalog_id'] + "/service_templates"
+      manageiq_vars['service_catalog_href'] = sc_href
+      manageiq_vars['href']                 = @svc_template['href']
+      manageiq_vars['enum_map']             = @enum_mappings
+    end
     vars = { 'manageiq' => manageiq_vars}
     File.write(filename, vars.to_yaml)
   end
 
   # What happens to optional parameters
-  def create_provisioning_yml(parameters)
+  def create_provision_yml(parameters)
     template_file = File.join(@source_dir, "/templates/provision.yml")
     raise "templates/provision.yml not found in #{@source_dir}" unless File.exist?(template_file)
     ansible_tasks = YAML.load_file(template_file)
@@ -206,6 +207,17 @@ class ServiceTemplateToAPB
       end
     end
     filename = File.join(@apb_dir, "roles/provision-#{@apb_name}/tasks/main.yml")
+    puts "Overwriting #{filename}"
+    File.delete(filename) if File.exist?(filename)
+    File.write(filename, ansible_tasks.to_yaml)
+  end
+
+  def create_retirement_yml
+    template_file = File.join(@source_dir, "/templates/deprovision.yml")
+    raise "templates/deprovision.yml not found in #{@source_dir}" unless File.exist?(template_file)
+    # Make sure that the template is valid and parseable
+    ansible_tasks = YAML.load_file(template_file)
+    filename = File.join(@apb_dir, "roles/deprovision-#{@apb_name}/tasks/main.yml")
     puts "Overwriting #{filename}"
     File.delete(filename) if File.exist?(filename)
     File.write(filename, ansible_tasks.to_yaml)
@@ -250,11 +262,14 @@ class ServiceTemplateToAPB
     parts.to_s
   end
 
-  def convert(action = 'provision')
-    svc_template = @template_href ? template_by_href : template_by_name
-    dialog_id = svc_template['config_info']['dialog_id'] || 
-      svc_template['config_info'][action]['dialog_id']
-    raise "No Service Dialog found for Service Template #{@template || @template_href}" unless dialog_id
+  def get_dialog(action)
+    @svc_template ||= @template_href ? template_by_href : template_by_name
+    dialog_id = @svc_template['config_info']['dialog_id'] || 
+      @svc_template['config_info'][action]['dialog_id']
+    unless dialog_id
+     puts "No Service Dialog found for Service Template #{@template || @template_href}"
+     return {}
+    end
   
     query = "/service_dialogs/#{dialog_id}"
     rest_return = RestClient::Request.execute(:method => :get,
@@ -263,16 +278,30 @@ class ServiceTemplateToAPB
                                               :password => @password,
                                               :headers  => {:accept => :json},
                                               :verify_ssl => @verify_ssl)
-    svc_params = []
-    svc_params << CFME_REQUESTER
-    svc_params << CFME_PASSWORD
-    result = JSON.parse(rest_return)
-    result['content'][0]['dialog_tabs'].each do |dt|
-      process_tab(dt, svc_params)
+    return JSON.parse(rest_return)
+  end
+
+  def convert(action = 'provision')
+    dlg_params = []
+    dlg_params << CFME_REQUESTER
+    dlg_params << CFME_PASSWORD
+    result = get_dialog(action)
+    if result['content']
+      result['content'][0]['dialog_tabs'].each do |dt|
+        process_tab(dt, dlg_params)
+      end
     end
-    create_apb_yml(svc_template, svc_params)
-    create_vars_yml(svc_template, svc_params)
-    create_provisioning_yml(svc_params[2..-1])
+    case action
+    when "provision"
+      create_apb_yml(dlg_params)
+      create_provision_yml(dlg_params[2..-1])
+      create_vars_yml(dlg_params, 'provision')
+    when 'retirement'
+      create_retirement_yml
+      create_vars_yml({}, 'deprovision')
+    else
+      raise "Invalid action #{action}"
+    end
   rescue => err
     puts "#{err}"
     puts "#{err.backtrace}"
@@ -336,4 +365,6 @@ end
 end
   
 
-ServiceTemplateToAPB.new(options).convert
+obj = ServiceTemplateToAPB.new(options)
+obj.convert('provision')
+obj.convert('retirement')

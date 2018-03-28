@@ -68,3 +68,5 @@
       asb_encode_binding:
         fields:
           cfme_service_href: "{{ service_url }}"
+          cfme_user: "{{ cfme_user }}"
+          cfme_password: "{{ cfme_password }}"

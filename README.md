@@ -4,7 +4,11 @@ Converts a MIQ Service Template to an Ansible Playbook Bundle format
 
 Install and Setup
 
-Install the APB python package
+Install the Ansible Playbook Bundle (apb) python package
+
+1.	pip install apb
+2.	apb --help
+  
 
 Clone this repository
 
@@ -31,15 +35,25 @@ From some directory
 
 
 ```
-apb init <<service_name_converted_to_apb_format>>
+Since this tool is used in conjunction the apb tool the recommended steps are
 
-cd <<service_name_converted_to_apb_format>>
+1. apb init <<service_name_converted_to_apb_format>>
 
-**To convert based on the href **
-ruby <<your_git_dir>>/miq_apb_tool/service_template_to_apb.rb -n -r https://<<cfme_server>/api/service_templates/1
+2. cd <<service_name_converted_to_apb_format>>
+
+**To convert service template based on the href **
+3. ruby <<your_git_dir>>/miq_apb_tool/service_template_to_apb.rb -n -r https://<<cfme_server>/api/service_templates/1
 
 **To convert based on the service template name**
 
 ruby <<your_git_dir>>/miq_apb_tool/service_template_to_apb.rb -n -t CFME_RHEV
+
+
+** Now we are back to using the apb tool
+
+4. apb prepare
+      
+
+5. apb push
 
 ```
