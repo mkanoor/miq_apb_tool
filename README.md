@@ -37,9 +37,11 @@ From some directory
 ```
 Since this tool is used in conjunction the apb tool the recommended steps are
 
-1. apb init <<service_name_converted_to_apb_format>>
+0. Make sure you have the OpenShift environment setup which will host the service template in its catalog.
 
-2. cd <<service_name_converted_to_apb_format>>
+1. apb init <<service_template_name_converted_to_apb_format>>
+
+2. cd <<service_template_name_converted_to_apb_format>>
 
 **To convert service template based on the href **
 3. ruby <<your_git_dir>>/miq_apb_tool/service_template_to_apb.rb -n -r https://<<cfme_server>/api/service_templates/1
