@@ -6,7 +6,6 @@ require 'json'
 require 'optparse'
 require 'yaml'
 require 'fileutils'
-require 'byebug'
 
 class ServiceTemplateToAPB
 
