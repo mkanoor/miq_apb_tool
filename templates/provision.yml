@@ -65,8 +65,10 @@
         service_url: "{{ manageiq.api_url }}/services/{{ request_task_output.json.resources[0].destination_id }}"
     - debug: var=service_url
     - name: Save the Service URL
-      asb_encode_binding:
-        fields:
-          cfme_service_href: "{{ service_url }}"
-          cfme_user: "{{ cfme_user }}"
-          cfme_password: "{{ cfme_password }}"
+      k8s_v1_config_map:
+        namespace: "{{ namespace }}"
+        name: "{{_apb_service_instance_id }}"
+        data:
+          cfmeServiceHref: "{{ service_url }}"
+          cfmeUser: "{{ cfme_user }}"
+          cfmePassword: "{{ cfme_password }}"

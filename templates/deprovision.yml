@@ -1,8 +1,14 @@
+    - name: Fetch the Service URL
+      k8s_v1_config_map:
+        namespace: "{{ namespace }}"
+        name: "{{_apb_service_instance_id }}"
+      register: config
+    - debug: var=config
     - name: CloudForms Retirement Task
       uri:
         url: "{{ manageiq.api_url }}/services"
-        user: "{{ _apb_provision_creds.cfme_user }}"
-        password: "{{ _apb_provision_creds.cfme_password }}"
+        user: "{{ config.config_map.data.cfmeUser }}"
+        password: "{{ config.config_map.data.cfmePassword }}"
         force_basic_auth: yes
         method: POST
         validate_certs: False
@@ -12,7 +18,7 @@
         body:
           action: 'retire'
           resource:
-             href: "{{ _apb_provision_creds.cfme_service_href }}"
+             href: "{{ config.config_map.data.cfmeServiceHref }}"
         return_content: yes
       register: output
 
