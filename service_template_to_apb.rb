@@ -1,14 +1,13 @@
 ##!/usr/env ruby
 #
 
-require 'rest-client'
-require 'json'
 require 'optparse'
 require 'yaml'
 require 'fileutils'
+require_relative 'service_template_parameters'
+require_relative 'service_template'
 
 class ServiceTemplateToAPB
-
   CFME_REQUESTER = {'title' => 'CFME Requester', 'name' => 'cfme_user',
                     'type' => 'string', 'required' => true,
                     'display_group' => 'CloudForms Credentials' }
@@ -17,176 +16,109 @@ class ServiceTemplateToAPB
                     'display_group' => 'CloudForms Credentials' }
 
   PROVISION_TASK_NAME = "CloudForms Provisioning Task"
+  DEFAULT_PLAN_NAME   = "default"
+
   def initialize(options = {})
-    @url           = options[:url]
-    @user          = options[:user]
-    @password      = options[:password]
-    @template      = options[:template]
-    @verify_ssl    = options[:verify_ssl]
+    @svc_template  = ServiceTemplate.new(options)
     @apb_yml_file  = 'apb.yml'
-    @template_href = options[:template_href]
-    @api_url       = build_api_url(@template_href || @url)
-    @max_retries   = 100
-    @retry_interval = 30
-    @enum_mappings  = {}
+    @max_retries   = 200
+    @retry_interval = 60
     @apb_dir        = "."
     @source_dir     = File.dirname(__FILE__)
+    @quota_check    = options[:quota_check]
   end
 
-  def process_tab(tab, svc_dialog_parameters)
-    tab['dialog_groups'].each do |section|
-      process_section(tab['label'],section, svc_dialog_parameters)
-    end
-  end
-
-  def process_section(tab_label, section, svc_dialog_parameters)
-    display_group = "#{tab_label}/#{section['label']}"
-    section['dialog_fields'].each do |dialog_field|
-      raise "Dynamic fields are not currently supported" if dialog_field['dynamic']
-      item = initialize_apb_parameter(dialog_field, display_group)
-      send(dialog_field['type'].to_sym, dialog_field, item)
-      svc_dialog_parameters << item
-    end
-  end
-
-  def initialize_apb_parameter(dialog_field, display_group)
-    item = {}
-    item['name'] = "#{dialog_field['name']}"
-    item['title'] = dialog_field['label']
-    item['default'] = convert_datatype(dialog_field['data_type'], dialog_field['default_value']) unless dialog_field['default_value'].empty?
-    # item['default'] = dialog_field['default_value'] unless dialog_field['default_value'].empty?
-    item['display_group'] = display_group
-    item['pattern'] = dialog_field['validator_rule'] if dialog_field['validator_rule']
-    # type: enum|string|boolean|int|number|bool
-    item['type'] = set_datatype(dialog_field['data_type'])
-    item['required'] = dialog_field['required']
-    item
-  end
-
-  def DialogFieldTextBox(dialog_field, item)
-    # display_type: password|textarea|text
-    if dialog_field['options']['protected']
-      item['display_type'] = 'password'
-    end
-    # max_length
-    # updatable : True/False for enum's where a user can enter a value
-  end
-
-  def DialogFieldTextAreaBox(dialog_field, item)
-    DialogFieldTextBox(dialog_field, item)
-    item['display_type'] = 'textarea'
-  end
-
-  def DialogFieldCheckBox(dialog_field, item)
-    item['type'] = 'boolean'
-    if dialog_field['default_value'] == 't'
-      item['default'] = true
-    else
-      item['default'] = false
-    end
-  end
-
-  def DialogFieldRadioButton(dialog_field, item)
-    item['type'] = 'enum'
-    item['enum'] = dialog_field['values'].flat_map { |x| x[1] }
-    @enum_mappings[item['name']] = dialog_field['values'].each_with_object({}) { |x, hash| hash[x[1]] = x[0] }
-
-  end
-
-  def DialogFieldDateControl(dialog_field, item)
-  end
-
-  def DialogFieldDateTimeControl(dialog_field, item)
-  end
-
-  def DialogFieldDropDownList(dialog_field, item)
-    item['type'] = 'enum'
-    item['enum'] = dialog_field['values'].flat_map { |x| x[1] }
-    @enum_mappings[item['name']] = dialog_field['values'].each_with_object({}) { |x, hash| hash[x[1]] = x[0] }
-    
-  end
-
-  def DialogFieldTagControl(dialog_field, item)
-    item['type'] = 'enum'
-    item['enum'] = dialog_field['values'].flat_map { |x| x['name'] }
-    @enum_mappings[item['name']] = dialog_field['values'].each_with_object({}) { |x, hash| hash[x['name']] = x['id'] }
-  end
-
-  def set_datatype(cfme_type)
-    case cfme_type
-    when "string"
-      "string"
-    when "integer"
-      "int"
-    else
-      "string"
-    end
-  end
-
-  def convert_datatype(cfme_type, cfme_value)
-    case cfme_type
-    when "string"
-      cfme_value
-    when "integer"
-      cfme_value.to_i
-    else
-      cfme_value
-    end
-  end
-
-  
   def apb_normalized_name(name)
     @apb_name ||= "#{name.downcase.gsub(/[()_,. ]/, '-')}-apb"
   end
 
+  def plans
+    return [] unless Dir.exist?("#{@apb_dir}/plans")
+    @plan_list ||= Dir.entries("#{@apb_dir}/plans").select { |f| File.extname(f) == ".yml" }.map { |f| f.split('.').first }
+  end
 
   def create_apb_yml(parameters)
-    puts "Creating apb yaml file #{@apb_yml_file} for service template #{@svc_template['name']}"
-    metadata = { 'displayName' => "#{@svc_template['name']} (APB)" }
-    metadata['imageUrl'] = @svc_template['picture']['image_href'] if @svc_template['picture']
+    puts "Creating apb yaml file #{@apb_yml_file} for service template #{@svc_template.object['name']}"
+    metadata = { 'displayName' => "#{@svc_template.object['name']} (APB)" }
+    metadata['imageUrl'] = @svc_template.object['picture']['image_href'] if @svc_template.object['picture']
 
-    plan_metadata = { 'displayName' => 'Default',
-                      'longDescription' => "This plan deploys an instance of #{@svc_template['name']}",
-                      'cost'            => '$0.0'
-                    }
+    @svc_template.object['description'] = 'No description provided' if @svc_template.object['description'].empty?
 
-    default_plan = {'name'        => 'default',
-                    'description' => "Default deployment plan for #{@svc_template['name']}-apb",
-                    'free'        => true,
-                    'metadata'    => plan_metadata,
-                    'parameters'  => parameters
-                    }
-    @svc_template['description'] = 'No description provided' if @svc_template['description'].empty?
+
     apb = {'version' => 1.0,
-           'name'    => apb_normalized_name(@svc_template['name']),
-       'description' => @svc_template['description'] || 'No description provided',
+           'name'    => apb_normalized_name(@svc_template.object['name']),
+           'description' => @svc_template.object['description'] || 'No description provided',
        'bindable'    => false,
        'async'      => 'optional',
        'metadata'   => metadata,
-       'plans'      => [default_plan]
+       'plans'      => create_plans(parameters)
     }
 
     File.write(@apb_yml_file, apb.to_yaml)
   end
 
-  def create_vars_yml(parameters, apb_action)
+  def create_plans(parameters)
+    return [default_plan(parameters)] if plans.empty?
+    plans.each.collect do | plan|
+      plan_attrs = YAML.load_file("#{@apb_dir}/plans/#{plan}.yml")
+      plan_metadata = { 'displayName'     => plan_attrs['plan_display_name'] || plan, 
+                        'longDescription' => plan_attrs['plan_long_description'] || plan_attrs['plan_description'],
+                        'cost'            => plan_attrs['plan_cost']}
+      {'name'         => plan,
+       'description' => plan_attrs['plan_description'],
+       'free'        => plan_attrs['plan_free'] || false,
+       'metadata'    => plan_metadata,
+       'parameters'  => plan_parameters(parameters, plan_attrs.keys)
+      }
+    end
+  end
+
+  def default_plan(parameters)
+    metadata = { 'displayName' => 'Default',
+                 'longDescription' => "This plan deploys an instance of #{@svc_template.object['name']}",
+                 'cost'            => '$0.0'
+               }
+
+    {'name'        => DEFAULT_PLAN_NAME,
+     'description' => "Default deployment plan for #{@svc_template.object['name']}-apb",
+     'free'        => true,
+     'metadata'    => metadata,
+     'parameters'  => parameters
+    }
+  end
+
+  def plan_parameters(parameters, plan_attr_names)
+    parameters.reject { |param| plan_attr_names.include?(param['name']) }
+  end
+
+  def create_vars_yml(parameters, apb_action, enum_mappings)
     puts "create vars directory"
     vars_dir = File.join(@apb_dir, "roles/#{apb_action}-#{@apb_name}/vars")
     Dir.mkdir(vars_dir) unless Dir.exist?(vars_dir)
     filename = File.join(vars_dir, "main.yml")
-    puts "Creating vars yaml file #{filename} for service template #{@svc_template['name']}"
+    puts "Creating vars yaml file #{filename} for service template #{@svc_template.object['name']}"
 
-    manageiq_vars = {'api_url'               => @api_url, 
+    manageiq_vars = {'api_url'               => @svc_template.api_url, 
                      'max_retries'           => @max_retries,
+                     'quota_check'           => @quota_check,
                      'retry_interval'        => @retry_interval}
     if apb_action == 'provision'
-      sc_href = @api_url+"/service_catalogs/" +  @svc_template['service_template_catalog_id'] + "/service_templates"
+      sc_href = @svc_template.api_url+"/service_catalogs/" +  @svc_template.object['service_template_catalog_id'] + "/service_templates"
       manageiq_vars['service_catalog_href'] = sc_href
-      manageiq_vars['href']                 = @svc_template['href']
-      manageiq_vars['enum_map']             = @enum_mappings
+      manageiq_vars['href']                 = @svc_template.object['href']
+      manageiq_vars['enum_map']             = enum_mappings
     end
     vars = { 'manageiq' => manageiq_vars}
     File.write(filename, vars.to_yaml)
+    plans.empty? ? copy_default_plan_vars(vars_dir) : copy_plan_vars(vars_dir)
+  end
+
+  def copy_plan_vars(vars_dir)
+    plans.each { |plan| FileUtils.cp("#{@apb_dir}/plans/#{plan}.yml", File.join(vars_dir, "#{plan}.yml")) }
+  end
+
+  def copy_default_plan_vars(vars_dir)
+    File.write("#{vars_dir}/default.yml", {:plan_name => DEFAULT_PLAN_NAME}.to_yaml)
   end
 
   # What happens to optional parameters
@@ -226,78 +158,22 @@ class ServiceTemplateToAPB
     "{{ [#{name}]|map('extract',manageiq.enum_map.#{name})|list|first }}"
   end
 
-  def template_by_name
-    puts "Fetching Service Template #{@template}"
-    query = "/service_templates?filter[]=name=#{@template}&expand=resources&attributes=config_info,picture.image_href"
-    rest_return = RestClient::Request.execute(:method => :get,
-                                              :url    => @api_url + query,
-                                              :user   => @user,
-                                              :password => @password,
-                                              :headers  => {:accept => :json},
-                                              :verify_ssl => @verify_ssl)
-    JSON.parse(rest_return)['resources'].first.tap do |svc_template|
-      raise "Service Template #{@template} not found" unless svc_template
-    end
-  end
-
-  def template_by_href
-    puts "Fetching Service Template #{@template_href}"
-    query = "&attributes=config_info,picture.image_href"
-    rest_return = RestClient::Request.execute(:method => :get,
-                                              :url    => @template_href,
-                                              :user   => @user,
-                                              :password => @password,
-                                              :headers  => {:accept => :json},
-                                              :verify_ssl => @verify_ssl)
-    JSON.parse(rest_return) do |svc_template|
-      raise "Service Template #{@template_href} not found" unless svc_template
-    end
-  end
-
-  def build_api_url(url)
-    raise "url not specified" unless url
-    parts = URI.parse(url)
-    parts.path = "/api"
-    parts.to_s
-  end
-
-  def get_dialog(action)
-    @svc_template ||= @template_href ? template_by_href : template_by_name
-    dialog_id = @svc_template['config_info']['dialog_id'] || 
-      @svc_template['config_info'][action]['dialog_id']
-    unless dialog_id
-     puts "No Service Dialog found for Service Template #{@template || @template_href}"
-     return {}
-    end
-  
-    query = "/service_dialogs/#{dialog_id}"
-    rest_return = RestClient::Request.execute(:method => :get,
-                                              :url    => @api_url + query,
-                                              :user   => @user,
-                                              :password => @password,
-                                              :headers  => {:accept => :json},
-                                              :verify_ssl => @verify_ssl)
-    return JSON.parse(rest_return)
-  end
-
   def convert(action = 'provision')
-    dlg_params = []
-    dlg_params << CFME_REQUESTER
-    dlg_params << CFME_PASSWORD
-    result = get_dialog(action)
-    if result['content']
-      result['content'][0]['dialog_tabs'].each do |dt|
-        process_tab(dt, dlg_params)
-      end
-    end
+    action_parameters = ServiceTemplateParameters.new
+    def_params = []
+    def_params << CFME_REQUESTER
+    def_params << CFME_PASSWORD
+    result = @svc_template.get_dialog(action)
+    action_parameters.process_tabs(result['content'][0]['dialog_tabs']) if result['content']
+
     case action
     when "provision"
-      create_apb_yml(dlg_params)
-      create_provision_yml(dlg_params[2..-1])
-      create_vars_yml(dlg_params, 'provision')
+      create_apb_yml(def_params + action_parameters.parameters)
+      create_provision_yml(action_parameters.parameters)
+      create_vars_yml(def_params + action_parameters.parameters, 'provision', action_parameters.enum_mappings)
     when 'retirement'
       create_retirement_yml
-      create_vars_yml({}, 'deprovision')
+      create_vars_yml({}, 'deprovision', action_parameters.enum_mappings)
     else
       raise "Invalid action #{action}"
     end
@@ -308,10 +184,11 @@ class ServiceTemplateToAPB
   end
 end
 
-options = {:user       => "admin",
-           :password   => "smartvm",
-           :verify_ssl => true,
-           :api_url    => "http://localhost:4000"}
+options = {:user        => "admin",
+           :password    => "smartvm",
+           :verify_ssl  => true,
+           :quota_check => false,
+           :api_url     => "http://localhost:4000"}
 
 parser = OptionParser.new do|opts|
   opts.banner = "Converts Cloudforms service template to APB.\nUsage: service_template_to_apb.rb [options]"
@@ -337,6 +214,10 @@ parser = OptionParser.new do|opts|
 
   opts.on('-n', '--no_cert_check', 'Disable certificate check') do
     options[:verify_ssl] = false
+  end
+
+  opts.on('-q', '--quota_check', 'Enable quota check, disabled by default') do
+    options[:quota_check] = true
   end
 
   opts.on('-h', '--help', 'Displays Help') do
