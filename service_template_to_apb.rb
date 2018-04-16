@@ -61,7 +61,7 @@ class ServiceTemplateToAPB
     return [default_plan(parameters)] if plans.empty?
     plans.each.collect do | plan|
       plan_attrs = YAML.load_file("#{@apb_dir}/plans/#{plan}.yml")
-      plan_metadata = { 'displayName'     => plan_attrs['plan_display_name'] || plan, 
+      plan_metadata = { 'displayName'     => plan_attrs['plan_display_name'] || plan,
                         'longDescription' => plan_attrs['plan_long_description'] || plan_attrs['plan_description'],
                         'cost'            => plan_attrs['plan_cost']}
       {'name'         => plan,
@@ -98,7 +98,7 @@ class ServiceTemplateToAPB
     filename = File.join(vars_dir, "main.yml")
     puts "Creating vars yaml file #{filename} for service template #{@svc_template.object['name']}"
 
-    manageiq_vars = {'api_url'               => @svc_template.api_url, 
+    manageiq_vars = {'api_url'               => @svc_template.api_url,
                      'max_retries'           => @max_retries,
                      'quota_check'           => @quota_check,
                      'retry_interval'        => @retry_interval}
@@ -158,24 +158,26 @@ class ServiceTemplateToAPB
     "{{ [#{name}]|map('extract',manageiq.enum_map.#{name})|list|first }}"
   end
 
-  def convert(action = 'provision')
-    action_parameters = ServiceTemplateParameters.new
-    def_params = []
-    def_params << CFME_REQUESTER
-    def_params << CFME_PASSWORD
-    result = @svc_template.get_dialog(action)
-    action_parameters.process_tabs(result['content'][0]['dialog_tabs']) if result['content']
+  def convert
+    ['provision', 'retirement'].each do |action|
+      action_parameters = ServiceTemplateParameters.new
+      def_params = []
+      def_params << CFME_REQUESTER
+      def_params << CFME_PASSWORD
+      result = @svc_template.get_dialog(action)
+      action_parameters.process_tabs(result['content'][0]['dialog_tabs']) if result['content']
 
-    case action
-    when "provision"
-      create_apb_yml(def_params + action_parameters.parameters)
-      create_provision_yml(action_parameters.parameters)
-      create_vars_yml(def_params + action_parameters.parameters, 'provision', action_parameters.enum_mappings)
-    when 'retirement'
-      create_retirement_yml
-      create_vars_yml({}, 'deprovision', action_parameters.enum_mappings)
-    else
-      raise "Invalid action #{action}"
+      case action
+      when "provision"
+        create_apb_yml(def_params + action_parameters.parameters)
+        create_provision_yml(action_parameters.parameters)
+        create_vars_yml(def_params + action_parameters.parameters, 'provision', action_parameters.enum_mappings)
+      when 'retirement'
+        create_retirement_yml
+        create_vars_yml({}, 'deprovision', action_parameters.enum_mappings)
+      else
+        raise "Invalid action #{action}"
+      end
     end
   rescue => err
     puts "#{err}"
@@ -183,68 +185,3 @@ class ServiceTemplateToAPB
     exit!
   end
 end
-
-options = {:user        => "admin",
-           :password    => "smartvm",
-           :verify_ssl  => true,
-           :quota_check => false,
-           :api_url     => "http://localhost:4000"}
-
-parser = OptionParser.new do|opts|
-  opts.banner = "Converts Cloudforms service template to APB.\nUsage: service_template_to_apb.rb [options]"
-  opts.on('-u', '--user <<user>>', 'CFME User default: admin') do |user|
-    options[:user] = user
-  end
-
-  opts.on('-p', '--password <<password>>', 'CFME Password default: smartvm') do |password|
-    options[:password] = password
-  end
-
-  opts.on('-s', '--url <<url>>', 'CFME Server URL default: http://localhost:4000') do |url|
-    options[:url] = url
-  end
-
-  opts.on('-t', '--template <<name>>', 'Service Template e.g. CFME_RHEV') do |template|
-    options[:template] = template
-  end
-
-  opts.on('-r', '--template_href <<url>>', 'Service Template href e.g. https://1.1.1.94/api/service_templates/1') do |template_href|
-    options[:template_href] = template_href
-  end
-
-  opts.on('-n', '--no_cert_check', 'Disable certificate check') do
-    options[:verify_ssl] = false
-  end
-
-  opts.on('-q', '--quota_check', 'Enable quota check, disabled by default') do
-    options[:quota_check] = true
-  end
-
-  opts.on('-h', '--help', 'Displays Help') do
-    puts opts
-    exit
-  end
-end
-
-parser.parse!
-if options[:template].nil? && options[:template_href].nil?
-  puts "template or template_href is required"
-  puts parser
-  exit 1
-end
-
-pwd = Dir.pwd
-%w(Dockerfile Makefile apb.yml).each do |f|
-  filename = File.join(pwd, f)
-  raise "#{filename} not found please ensure you are running this from apb directory" unless File.exist?(filename)
-end
-  
-%w(playbooks roles).each do |d|
-  dirname = File.join(pwd, d)
-  raise "#{dirname} not found please ensure you are running this from apb directory" unless Dir.exist?(dirname)
-end
-  
-
-obj = ServiceTemplateToAPB.new(options)
-obj.convert('provision')
-obj.convert('retirement')
