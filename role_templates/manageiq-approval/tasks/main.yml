@@ -1,0 +1,99 @@
+---
+# tasks file for manageiq-approval
+- name: preliminary login information with account that can see everything
+  raw: "oc login -u developer -p asd && oc project {{ namespace }}"
+
+- name: list service instances
+  raw: oc get serviceinstances -o json
+  register: serviceinstances
+
+  # We need to rename the returned item as a generic list since oc is returning a
+  #   reserved key of 'items'
+- set_fact:
+    services_all: "{{ (serviceinstances.stdout | from_json)['items'] }}"
+
+- name: "get serviceclass labels for {{ _apb_service_class_id }}"
+  raw: "oc get clusterserviceclass {{ _apb_service_class_id }} -o json"
+  register: serviceclass
+
+- debug: msg="Services All {{ services_all }}"
+
+- debug: msg="Service Class {{ serviceclass.stdout }}"
+
+- name: "pull username from service instance id {{ _apb_service_instance_id }}"
+  with_items: "{{ services_all }}"
+  set_fact: 
+    username: "{{ item.spec.userInfo.username }}"
+    project: "{{ item.metadata.namespace }}"
+  when: item.spec.externalID == _apb_service_instance_id
+
+- debug: msg="Username- {{ username }} Project - {{ project }}"
+
+- name: "dump oc project {{ project }}"
+  raw: "oc get project {{ project }} -o json"
+  register: project_json
+
+- name: "dump oc user {{ username }}"
+  raw: "oc get user {{ username }} -o json"
+  register: username_json
+
+- set_fact:
+    service_class_labels: "{{ (serviceclass.stdout | from_json).metadata.labels | default('No Labels') }}"
+    project_labels: "{{ (project_json.stdout | from_json).metadata.labels | default('No Labels') }}"
+    username_labels: "{{ (username_json.stdout | from_json).metadata.labels | default('No Labels') }}"
+    username_name: "{{ (username_json.stdout | from_json).metadata.name | default('No Name') }}"
+    service_class_name: "{{ (serviceclass.stdout | from_json).metadata.name | default('No Name') }}"
+
+- debug: msg="Service Class Labels for {{ (serviceclass.stdout | from_json).metadata.name}} {{ service_class_labels }}"
+- debug: msg="Project Labels for {{ (project_json.stdout | from_json).metadata.name }} {{ project_labels }}"
+- debug: msg="Username Labels for {{ (username_json.stdout | from_json).metadata.name}} {{ username_labels }}"
+- debug: msg="Username Name for {{ (username_json.stdout | from_json).metadata.name}} {{ username_name }}"
+- debug: msg="Service Class Name for {{ (serviceclass.stdout | from_json).metadata.name}} {{ service_class_name }}"
+
+- name: POST the Approval Rules engine with this service
+  uri:
+    url: "{{ rules_engine_post_href }}"
+    user: "{{ rules_engine_user }}"
+    password: "{{ rules_engine_password }}"
+    force_basic_auth: yes
+    method: POST
+    validate_certs: "{{ rules_engine_validate_certs }}"
+    headers:
+      X-KIE-ContentType: "JSON"
+      Content-Type: "application/json"
+      Accept: "application/json"
+    body_format: json
+    status_code: 201
+    body:
+      userLabel: "{{ username_labels.permissions }}"
+      projectLabel: "{{ project_labels.permissions }}"
+      serviceLabel: "{{ service_class_labels.permissions }}"
+      requesterName: "{{ username_name }}"
+      serviceName: "{{ service_class_name }}"
+      approvalStatus: "Pending"
+    return_content: yes
+  register: rule_instance
+
+- debug: msg="Rule instance {{ rule_instance }}"
+
+- name: GET the approval process status
+  uri:
+    url: "{{ rules_engine_get_href }}/{{ rule_instance.content }}?withVars=true"
+    method: GET
+    user: "{{ rules_engine_user }}"
+    password: "{{ rules_engine_password }}"
+    force_basic_auth: yes
+    validate_certs: "{{ rules_engine_validate_certs }}"
+    headers:
+      X-KIE-ContentType: "JSON"
+      Content-Type: "application/json"
+      Accept: "application/json"
+    body_format: json
+    status_code: 200
+  register: approval_request
+  until: approval_request.json['process-instance-variables'].approvalStatus == 'Approved' or approval_request.json['process-instance-variables'].approvalStatus == 'Denied'
+  failed_when: approval_request.json['process-instance-variables'].approvalStatus != 'Approved'
+  retries: "{{ rules_engine_retries }}"
+  delay: "{{ rules_engine_delay }}"
+
+- debug: var=approval_request.json['process-instance-variables'].approvalStatus

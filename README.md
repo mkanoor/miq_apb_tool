@@ -44,11 +44,11 @@ Since this tool is used in conjunction the apb tool the recommended steps are
 2. cd <<service_template_name_converted_to_apb_format>>
 
 **To convert service template based on the href **
-3. ruby <<your_git_dir>>/miq_apb_tool/service_template_to_apb.rb -n -r https://<<cfme_server>/api/service_templates/1
+3. ruby <<your_git_dir>>/miq_apb_tool/miq_apb.rb -n -r https://<<cfme_server>/api/service_templates/1
 
 **To convert based on the service template name**
 
-ruby <<your_git_dir>>/miq_apb_tool/service_template_to_apb.rb -n -t CFME_RHEV
+ruby <<your_git_dir>>/miq_apb_tool/miq_apb.rb -n -t CFME_RHEV
 
 
 ** Now we are back to using the apb tool
