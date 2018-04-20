@@ -1,3 +1,4 @@
+    - include_tasks: approval.yml
     - debug: var=manageiq.href
     - name: Load a variable file based on the selected plan
       include_vars:
@@ -43,10 +44,21 @@
         status_code: 200
       register: request_result
       until: request_result.json.request_state == 'finished' or request_result.json.status == 'Error'
-      failed_when: request_result.json.status== 'Error'
       retries: "{{ manageiq.max_retries }}"
       delay: "{{ manageiq.retry_interval }}"
     - debug: var=request_result
+
+    - name: Create the error file
+      lineinfile: 
+        line: "{{ request_result.json.message }}"
+        path: /dev/termination-log
+        unsafe_writes: true
+      when: request_result.json.status == 'Error'
+
+    - name: Fail the provision task
+      fail:
+        msg: "{{ request_result.json.message }}"
+      when: request_result.json.status == 'Error'
 
     - name: CloudForms Service Request Task
       uri:

@@ -131,6 +131,9 @@ class ServiceTemplateToAPB
         parameters.each do |param|
           prov_task['uri']['body']['resource'][param['name']] = if param['type'] == 'enum'
                                                                   set_enum_param(param['name'])
+                                                                elsif param['name'] == 'option_0_vm_memory'
+                                                                  memory_to_mb(param['name'])
+
                                                                 else
                                                                   "{{ #{param['name']} }}"
                                                                 end
@@ -141,6 +144,9 @@ class ServiceTemplateToAPB
     puts "Overwriting #{filename}"
     File.delete(filename) if File.exist?(filename)
     File.write(filename, ansible_tasks.to_yaml)
+    approval_file = File.join(@source_dir, "/templates/approval.yml")
+    target_approval = File.join(@apb_dir, "roles/provision-#{@apb_name}/tasks/approval.yml")
+    FileUtils.cp(approval_file, target_approval)
   end
 
   def create_retirement_yml
@@ -156,6 +162,10 @@ class ServiceTemplateToAPB
 
   def set_enum_param(name)
     "{{ [#{name}]|map('extract',manageiq.enum_map.#{name})|list|first }}"
+  end
+
+  def memory_to_mb(name)
+    "{{ ((#{name}|float) * 1024.0)|int }}"
   end
 
   def convert(action = 'provision')

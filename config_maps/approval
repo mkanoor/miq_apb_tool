@@ -1,0 +1,7 @@
+num_approvers: '2'
+approver_1_url: https://somewebhook_url/teddy
+approver_1_name: Ted Williams
+approver_1_status: Pending
+approver_2_url: https://somewebhook_url/babe
+approver_2_name: Babe Ruth
+approver_2_status: Pending

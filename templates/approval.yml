@@ -1,0 +1,89 @@
+- set_fact:
+    requested_cpus: "{{ (option_0_number_of_sockets|default(0)|int)*(option_0_cores_per_socket|default(0)|int) }}"
+
+- set_fact:
+    requested_memory: "{{ (option_0_number_of_vms|default(0)|int)*(option_0_vm_memory|default(0)|int) }}"
+- set_fact:
+    requested_storage: "{{ (option_0_number_of_vms|default(0)|int)*(provisioned_storage|default(0)|int) }}"
+- set_fact:
+    requested_vms: "{{ (option_0_number_of_vms|default(0)|int) }}"
+- set_fact:
+    requested_budget: "{{ (budget|default(0.0)|float) }}"
+
+- name: Fetch the Quota Config Map
+  k8s_v1_config_map:
+    namespace: "{{ namespace }}"
+    name: redhat-quota
+  register: redhat_quota
+- debug: var=redhat_quota
+- set_fact:
+    quota: "{{ redhat_quota.config_map.data.quota | from_yaml }}"
+- debug: var=quota
+
+- name: Fetch the Approval Config Map
+  k8s_v1_config_map:
+    namespace: "{{ namespace }}"
+    name: redhat-approval
+  register: redhat_approval
+- debug: var=redhat_approval
+- set_fact:
+    approval: "{{ redhat_approval.config_map.data.approval | from_yaml }}"
+- debug: var=approval
+
+- name: Fetch the Settings Config Map
+  k8s_v1_config_map:
+    namespace: "{{ namespace }}"
+    name: redhat-settings
+  register: redhat_settings
+- debug: var=redhat_settings
+- set_fact:
+    settings: "{{ redhat_settings.config_map.data.settings | from_yaml }}"
+- debug: var=settings
+
+- name: Build Extra Info Dictionary
+  set_fact: 
+    extra_info:
+      {
+        'requester': "{{_apb_last_requesting_user}}",
+        'plan_id': "{{_apb_plan_id}}",
+        'requested_cpus': "{{ requested_cpus }}",
+        'requested_vms': "{{ requested_vms }}",
+        'requested_memory': "{{ requested_memory }}",
+        'requested_budget': "{{ requested_budget }}",
+        'requested_storage': "{{ requested_storage }}",
+        'slack_proxy_server': "{{ settings.slack_proxy_server | default('not_defined') }}"
+      }
+- name: Build the payload to be sent to BPMS
+  set_fact: 
+    bpms_dict: "{{ approval|combine(quota)|combine(extra_info) }}"
+
+- debug: var=bpms_dict
+- name: Save the new config
+  k8s_v1_config_map:
+    namespace: "{{ namespace }}"
+    name: "{{_apb_service_instance_id }}-status"
+    data:
+      status: "{{ bpms_dict | to_nice_yaml }}"
+
+- name: Create the Updated Quota after approval has been granted
+  set_fact:
+    updated_quota: 
+      {
+        'allocated_budget': "{{ quota.allocated_budget }}",
+        'allocated_cpus': "{{ quota.allocated_cpus }}",
+        'allocated_memory_gb': "{{ quota.allocated_memory_gb }}",
+        'allocated_storage_gb': "{{ quota.allocated_storage_gb }}",
+        'allocated_vms': "{{ quota.allocated_vms }}",
+        'used_budget' : "{{ (quota.used_budget|float + requested_budget|float) | float }}",
+        'used_cpus': "{{ (quota.used_cpus|int + requested_cpus|int) | int }}",
+        'used_memory_gb' : "{{ (quota.used_memory_gb|int + requested_memory|int) | int }}",
+        'used_storage_gb' : "{{ (quota.used_storage_gb|int + requested_storage|int) | int }}",
+        'used_vms' : "{{ (quota.used_vms|int + requested_vms|int) | int }}"
+      }
+
+- name: Save the updated quota
+  k8s_v1_config_map:
+    namespace: "{{ namespace }}"
+    name: redhat-quota
+    data:
+      quota: "{{ updated_quota | to_nice_yaml }}"
