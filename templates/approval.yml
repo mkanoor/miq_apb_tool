@@ -10,6 +10,12 @@
 - set_fact:
     requested_budget: "{{ (budget|default(0.0)|float) }}"
 
+- name: Fetch the BPMS credentials
+  k8s_v1_secret:
+    namespace: "{{ namespace }}"
+    name: bpms
+  register: bpms_cred
+
 - name: Fetch the Quota Config Map
   k8s_v1_config_map:
     namespace: "{{ namespace }}"
