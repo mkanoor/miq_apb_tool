@@ -1,5 +1,5 @@
-bpms_url: https://bpms.example.com/approve
-bpms_ssl_verify: false
+bpm_url: https://bpm.example.com/approve
+bpm_ssl_verify: false
 slack_proxy_server: https://someexternalslackproxy.com
 max_retries: 20
 retry_interval: 30

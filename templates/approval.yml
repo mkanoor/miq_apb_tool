@@ -13,8 +13,8 @@
 - name: Fetch the BPMS credentials
   k8s_v1_secret:
     namespace: "{{ namespace }}"
-    name: bpms
-  register: bpms_cred
+    name: bpm
+  register: bpm_cred
 
 - name: Fetch the Quota Config Map
   k8s_v1_config_map:
@@ -62,15 +62,15 @@
       }
 - name: Build the payload to be sent to BPMS
   set_fact: 
-    bpms_dict: "{{ approval|combine(quota)|combine(extra_info) }}"
+    bpm_dict: "{{ approval|combine(quota)|combine(extra_info) }}"
 
-- debug: var=bpms_dict
+- debug: var=bpm_dict
 - name: Save the new config
   k8s_v1_config_map:
     namespace: "{{ namespace }}"
     name: "{{_apb_service_instance_id }}-status"
     data:
-      status: "{{ bpms_dict | to_nice_yaml }}"
+      status: "{{ bpm_dict | to_nice_yaml }}"
 
 - name: Create the Updated Quota after approval has been granted
   set_fact:
