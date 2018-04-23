@@ -8,7 +8,7 @@
 - set_fact:
     requested_vms: "{{ (option_0_number_of_vms|default(0)|int) }}"
 - set_fact:
-    requested_budget: "{{ (budget|default(0.0)|float) }}"
+    requested_budget: "{{ (plan_cost|default(0.0)|float) }}"
 
 - name: Fetch the BPMS credentials
   k8s_v1_secret:
