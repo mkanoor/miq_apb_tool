@@ -101,6 +101,7 @@ class ServiceTemplateToAPB
     manageiq_vars = {'api_url'               => @svc_template.api_url, 
                      'max_retries'           => @max_retries,
                      'quota_check'           => @quota_check,
+                     'service_name'          => @svc_template.object['name'],
                      'retry_interval'        => @retry_interval}
     if apb_action == 'provision'
       sc_href = @svc_template.api_url+"/service_catalogs/" +  @svc_template.object['service_template_catalog_id'] + "/service_templates"

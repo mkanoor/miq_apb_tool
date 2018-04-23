@@ -57,6 +57,7 @@
         'requested_memory': "{{ requested_memory }}",
         'requested_budget': "{{ requested_budget }}",
         'requested_storage': "{{ requested_storage }}",
+        'service_name': "{{ manageiq.service_name }}",
         'slack_proxy_server': "{{ settings.slack_proxy_server | default('not_defined') }}"
       }
 - name: Build the payload to be sent to BPMS
