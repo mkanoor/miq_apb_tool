@@ -148,6 +148,13 @@ class ServiceTemplateToAPB
     approval_file = File.join(@source_dir, "/templates/approval.yml")
     target_approval = File.join(@apb_dir, "roles/provision-#{@apb_name}/tasks/approval.yml")
     FileUtils.cp(approval_file, target_approval)
+    copy_action_plugins
+  end
+
+  def copy_action_plugins
+    action_dir = File.join(@apb_dir, "/roles/provision-#{@apb_name}/action_plugins")
+    FileUtils.mkdir_p action_dir
+    FileUtils.cp_r("#{@source_dir}/action_plugins/.", action_dir)
   end
 
   def create_retirement_yml
