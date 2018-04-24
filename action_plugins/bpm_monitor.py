@@ -11,7 +11,7 @@ class ActionModule(ActionBase):
         result = super(ActionModule, self).run(tmp, task_vars)
 
         delay = self._task.args.get('delay', 30)
-        max_retries = self._task.args.get('max_retries', 10)
+        retries = self._task.args.get('retries', 10)
 
         config_map_args = {}
         config_map_args['namespace'] = self._task.args.get('namespace')
@@ -27,7 +27,7 @@ class ActionModule(ActionBase):
         uri_module_args['headers'] = { 'Content-Type': 'application/json'}
         uri_module_args['status_code'] = 200
 
-        for i in range(1, max_retries):
+        for i in range(1, retries):
             result['uri_result'] = self._execute_module(module_name='uri',
                     module_args=uri_module_args,
                     task_vars=task_vars, tmp=tmp)
