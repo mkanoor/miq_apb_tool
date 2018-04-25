@@ -63,3 +63,15 @@
     name: redhat-quota
     data:
       quota: "{{ updated_quota | to_nice_yaml }}"
+
+- name: Delete the Config Map
+  k8s_v1_config_map:
+    namespace: "{{ namespace }}"
+    name: "{{_apb_service_instance_id }}"
+    state: absent
+
+- name: Delete the Status Config Map
+  k8s_v1_config_map:
+    namespace: "{{ namespace }}"
+    name: "{{_apb_service_instance_id }}-status"
+    state: absent
