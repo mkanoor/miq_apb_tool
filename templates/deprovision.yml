@@ -52,8 +52,8 @@
         'allocated_vms': "{{ quota.allocated_vms }}",
         'used_budget' : "{{ (quota.used_budget|float - svc_status.requested_budget|float) | float }}",
         'used_cpus': "{{ (quota.used_cpus|int - svc_status.requested_cpus|int) | int }}",
-        'used_memory_gb' : "{{ (quota.used_memory_gb|int - svc_status.requested_memory|int) | int }}",
-        'used_storage_gb' : "{{ (quota.used_storage_gb|int - svc_status.requested_storage|int) | int }}",
+        'used_memory_gb' : "{{ (quota.used_memory_gb|int - svc_status.requested_memory_gb|int) | int }}",
+        'used_storage_gb' : "{{ (quota.used_storage_gb|int - svc_status.requested_storage_gb|int) | int }}",
         'used_vms' : "{{ (quota.used_vms|int - svc_status.requested_vms|int) | int }}"
       }
 
