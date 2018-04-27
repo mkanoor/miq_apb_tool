@@ -95,9 +95,9 @@
 - name: Build Extra Info Dictionary
   set_fact: 
     extra_info:
-      user_label: "{{ username_labels.permissions }}"
-      project_label: "{{ project_labels.permissions }}"
-      service_label: "{{ service_class_labels.permissions }}"
+      user_label: "{{ username_labels.permissions|default('no_label') }}"
+      project_label: "{{ project_labels.permissions|default('no_label') }}"
+      service_label: "{{ service_class_labels.permissions|default('no_label')}}"
       requester: "{{ (username_json.stdout | from_json).metadata.name }}"
       plan_id: "{{_apb_plan_id}}"
       requested_cpus: "{{ requested_cpus }}"
