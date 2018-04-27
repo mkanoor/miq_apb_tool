@@ -1,4 +1,6 @@
 bpm_url: https://bpm.example.com/approve
+bpm_get_path: kie-server/services/rest/server/queries/processes/instances
+bpm_post_path: kie-server/services/rest/server/containers/servicecatalog/processes/approval/instances
 bpm_ssl_verify: false
 slack_proxy_server: https://someexternalslackproxy.com
 max_retries: 20
