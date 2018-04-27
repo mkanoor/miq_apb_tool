@@ -10,39 +10,34 @@ class ActionModule(ActionBase):
 
         result = super(ActionModule, self).run(tmp, task_vars)
 
-        delay = self._task.args.get('delay', 30)
-        retries = self._task.args.get('retries', 10)
-
-        config_map_args = {}
-        config_map_args['namespace'] = self._task.args.get('namespace')
-        config_map_args['name'] = self._task.args.get('name')
-
-        uri_module_args = {}
-        uri_module_args['url'] = self._task.args.get('url')
-        uri_module_args['user'] = self._task.args.get('user')
-        uri_module_args['password'] = self._task.args.get('password')
-        uri_module_args['validate_certs'] = self._task.args.get('validate_certs', True)
-        uri_module_args['method'] = 'GET'
-        uri_module_args['force_basic_auth'] = 'yes'
-        uri_module_args['headers'] = { 'Content-Type': 'application/json'}
-        uri_module_args['status_code'] = 200
+        delay = int(self._task.args.get('delay', 10))
+        retries = int(self._task.args.get('retries', 5))
+        config_map_args = dict(namespace=self._task.args.get('namespace'), name=self._task.args.get('name'))
+        uri_module_args = self._task.args.get('uri')
 
         for i in range(1, retries):
             result['uri_result'] = self._execute_module(module_name='uri',
                     module_args=uri_module_args,
                     task_vars=task_vars, tmp=tmp)
-
-            status_data = {'address': 'Elm Street', 'name': 'Freddy Kreuger', 'counter': i}
-            config_map_args['data'] = {'status': yaml.dump(status_data, default_flow_style=False)}
-
+            status_data = result['uri_result']['json']['process-instance-variables']
+            config_map_args['data'] = {'status': yaml.safe_dump(status_data, default_flow_style=False)}
             result['config_result'] = self._execute_module(module_name='k8s_v1_config_map',
                     module_args=config_map_args,
                     task_vars=task_vars, tmp=tmp)
 
-            if result['uri_result']['status'] != 200:
-               break
+            result['changed'] = True
+
+            process_dict = result['uri_result']['json']['process-instance-state']
+            if process_dict == 2:
+                if 'approval_status' in status_data and status_data['approval_status'] == 'Approved':
+                    result['failed'] = False
+                    return result
+                elif 'approval_status' in status_data and status_data['approval_status'] == 'Denied':
+                    result['failed'] = True
+                    return result
+
+
             time.sleep(delay)
 
-        result['changed'] = True
-
+        result['failed'] = True
         return result
