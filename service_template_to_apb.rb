@@ -50,6 +50,7 @@ class ServiceTemplateToAPB
            'description' => @svc_template.object['description'] || 'No description provided',
        'bindable'    => false,
        'async'      => 'optional',
+       'alpha'      => { 'dashboard_redirect' => true },
        'metadata'   => metadata,
        'plans'      => create_plans(parameters)
     }
@@ -98,7 +99,8 @@ class ServiceTemplateToAPB
     filename = File.join(vars_dir, "main.yml")
     puts "Creating vars yaml file #{filename} for service template #{@svc_template.object['name']}"
 
-    manageiq_vars = {'api_url'               => @svc_template.api_url, 
+    manageiq_vars = {'api_url'               => @svc_template.api_url,
+                     'cfme_console_url'      => @svc_template.cfme_console_url,
                      'max_retries'           => @max_retries,
                      'quota_check'           => @quota_check,
                      'service_name'          => @svc_template.object['name'],

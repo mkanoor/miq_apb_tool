@@ -88,3 +88,10 @@
           cfmeServiceHref: "{{ service_url }}"
           cfmeUser: "{{ cfme_user }}"
           cfmePassword: "{{ cfme_password }}"
+    - name: set the console service_url
+      set_fact:
+        dashboard_service_url: "{{ manageiq.cfme_console_url }}/service/show/{{ request_task_output.json.resources[0].destination_id }}"
+    - debug: var=dashboard_service_url
+    - name: Set the dashboard url
+      asb_dashboard_url:
+        dashboard_url: "{{ dashboard_service_url }}"

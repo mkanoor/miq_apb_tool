@@ -4,6 +4,7 @@ require 'yaml'
 
 class ServiceTemplate
   attr_reader :api_url
+  attr_reader :cfme_console_url
 
   def initialize(options = {})
     @url           = options[:url]
@@ -13,6 +14,7 @@ class ServiceTemplate
     @verify_ssl    = options[:verify_ssl]
     @template_href = options[:template_href]
     @api_url       = build_api_url(@template_href || @url)
+    @cfme_console_url = build_console_url(@template_href || @url)
   end
 
   def get_dialog(action)
@@ -88,6 +90,13 @@ class ServiceTemplate
     raise "url not specified" unless url
     parts = URI.parse(url)
     parts.path = "/api"
+    parts.to_s
+  end
+
+  def build_console_url(url)
+    raise "url not specified" unless url
+    parts = URI.parse(url)
+    parts.path = ""
     parts.to_s
   end
 end
