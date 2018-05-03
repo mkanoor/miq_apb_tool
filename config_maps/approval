@@ -9,3 +9,6 @@ approver_2_name: Babe Ruth
 approver_2_status: Pending
 approver_2_initiated_at: ''
 approver_2_approved_at: ''
+quota_approver_url: https://somewebhook_url/freddy
+quota_approver_name: Freddy Quotaworks
+quota_approver_status: Pending
