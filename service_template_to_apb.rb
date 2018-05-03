@@ -8,13 +8,6 @@ require_relative 'service_template_parameters'
 require_relative 'service_template'
 
 class ServiceTemplateToAPB
-  CFME_REQUESTER = {'title' => 'CFME Requester', 'name' => 'cfme_user',
-                    'type' => 'string', 'required' => true,
-                    'display_group' => 'CloudForms Credentials' }
-  CFME_PASSWORD  = {'title' => 'CFME Password', 'name' => 'cfme_password',
-                    'type' => 'string', 'display_type' => 'password', 'required' => true,
-                    'display_group' => 'CloudForms Credentials' }
-
   PROVISION_TASK_NAME = "CloudForms Provisioning Task"
   DEFAULT_PLAN_NAME   = "default"
 
@@ -147,10 +140,17 @@ class ServiceTemplateToAPB
     puts "Overwriting #{filename}"
     File.delete(filename) if File.exist?(filename)
     File.write(filename, ansible_tasks.to_yaml)
-    approval_file = File.join(@source_dir, "/templates/approval.yml")
-    target_approval = File.join(@apb_dir, "roles/provision-#{@apb_name}/tasks/approval.yml")
-    FileUtils.cp(approval_file, target_approval)
+    task_dir = File.join(@apb_dir, "roles/provision-#{@apb_name}/tasks")
+    copy_include_tasks(%w(approval.yml credentials.yml), task_dir)
     copy_action_plugins
+  end
+
+  def copy_include_tasks(files, task_dir)
+    files.each do |file|
+      src_file = File.join(@source_dir, "/templates/#{file}")
+      target_file = File.join(task_dir, file)
+      FileUtils.cp(src_file, target_file)
+    end
   end
 
   def copy_action_plugins
@@ -168,6 +168,8 @@ class ServiceTemplateToAPB
     puts "Overwriting #{filename}"
     File.delete(filename) if File.exist?(filename)
     File.write(filename, ansible_tasks.to_yaml)
+    task_dir = File.join(@apb_dir, "roles/deprovision-#{@apb_name}/tasks")
+    copy_include_tasks(%w(credentials.yml), task_dir)
   end
 
   def set_enum_param(name)
@@ -180,17 +182,14 @@ class ServiceTemplateToAPB
 
   def convert(action = 'provision')
     action_parameters = ServiceTemplateParameters.new
-    def_params = []
-    def_params << CFME_REQUESTER
-    def_params << CFME_PASSWORD
     result = @svc_template.get_dialog(action)
     action_parameters.process_tabs(result['content'][0]['dialog_tabs']) if result['content']
 
     case action
     when "provision"
-      create_apb_yml(def_params + action_parameters.parameters)
+      create_apb_yml(action_parameters.parameters)
       create_provision_yml(action_parameters.parameters)
-      create_vars_yml(def_params + action_parameters.parameters, 'provision', action_parameters.enum_mappings)
+      create_vars_yml(action_parameters.parameters, 'provision', action_parameters.enum_mappings)
     when 'retirement'
       create_retirement_yml
       create_vars_yml({}, 'deprovision', action_parameters.enum_mappings)
