@@ -109,6 +109,7 @@
       requested_budget: "{{ requested_budget }}"
       requested_storage_gb: "{{ requested_storage_gb }}"
       service_name: "{{ manageiq.service_name }}"
+      project: "{{ namespace }}"
 
 - name: Build the payload to be sent to BPMS
   set_fact: 
